@@ -5,7 +5,8 @@ import type {
   HostedReviewCreationEligibility,
   HostedReviewCreationEligibilityArgs,
   HostedReviewForBranchArgs,
-  HostedReviewInfo
+  HostedReviewInfo,
+  HostedReviewProvider
 } from '../shared/hosted-review'
 import type { NativeFileDropPayload } from '../shared/native-file-drop'
 import type { AppIdentity } from '../shared/app-identity'
@@ -40,6 +41,8 @@ import type {
   GitCommitCompareResult,
   GitConflictOperation,
   GitDiffResult,
+  GitForkSyncExpectedUpstream,
+  GitForkSyncResult,
   GitPushTarget,
   GitStatusResult,
   GitUpstreamStatus,
@@ -152,6 +155,7 @@ import type {
   Worktree,
   WorktreeBaseStatusEvent,
   WorktreeLineage,
+  WorkspaceLineage,
   WorktreeMeta,
   WorktreeRemoteBranchConflictEvent,
   RemoveWorktreeResult,
@@ -585,9 +589,7 @@ export type StatsApi = {
 // renderer's view of the IPC surface.
 export type DiagnosticsStatusPayload = {
   readonly localFileEnabled: boolean
-  readonly otlpEnabled: boolean
   readonly bundleEnabled: boolean
-  readonly otlpStatus: string
   readonly traceFilePath: string
   readonly traceFamilySize: number
   readonly disabledReason?:
@@ -601,9 +603,13 @@ export type DiagnosticsBundlePayload = {
   readonly bytes: number
   readonly spanCount: number
 }
-export type DiagnosticsUploadPayload = {
-  readonly ticketId: string
-}
+export type DiagnosticsUploadPayload =
+  | {
+      readonly ticketId: string
+    }
+  | {
+      readonly canceled: true
+    }
 
 export type MemoryApi = {
   getSnapshot: () => Promise<MemorySnapshot>
@@ -778,10 +784,12 @@ export type PreloadApi = {
           | 'externalWorktreeVisibilityPromptDismissedAt'
           | 'projectGroupId'
           | 'projectGroupOrder'
+          | 'forkSyncMode'
         >
       > & { sourceControlAi?: Repo['sourceControlAi'] | null }
     }) => Promise<Repo>
     pickFolder: () => Promise<string | null>
+    pickFolders: () => Promise<string[]>
     pickDirectory: () => Promise<string | null>
     clone: (args: { url: string; destination: string }) => Promise<Repo>
     cloneRemote: (args: { connectionId: string; url: string; destination: string }) => Promise<Repo>
@@ -930,6 +938,7 @@ export type PreloadApi = {
       repoId: string
       prNumber: number
       headRefName?: string
+      baseRefName?: string
       isCrossRepository?: boolean
     }) => Promise<GitHubPrStartPoint | { error: string }>
     /** GitLab parallel of resolvePrBase. For same-project MRs returns
@@ -939,8 +948,12 @@ export type PreloadApi = {
       repoId: string
       mrIid: number
       sourceBranch?: string
+      targetBranch?: string
       isCrossRepository?: boolean
-    }) => Promise<{ baseBranch: string; pushTarget?: GitPushTarget } | { error: string }>
+    }) => Promise<
+      | { baseBranch: string; compareBaseRef?: string; pushTarget?: GitPushTarget }
+      | { error: string }
+    >
     remove: (args: {
       worktreeId: string
       force?: boolean
@@ -952,7 +965,10 @@ export type PreloadApi = {
       expectedHead: string
     }) => Promise<ForceDeleteWorktreeBranchResult>
     updateMeta: (args: { worktreeId: string; updates: Partial<WorktreeMeta> }) => Promise<Worktree>
-    listLineage: () => Promise<Record<string, WorktreeLineage>>
+    listLineage: () => Promise<{
+      lineage: Record<string, WorktreeLineage>
+      workspaceLineage?: Record<string, WorkspaceLineage>
+    }>
     updateLineage: (args: {
       worktreeId: string
       parentWorktreeId?: string
@@ -1259,6 +1275,7 @@ export type PreloadApi = {
       args: GitHubRepoSelectorArgs & {
         prNumber: number
         enabled: boolean
+        method?: 'merge' | 'squash' | 'rebase'
         prRepo?: GitHubOwnerRepo | null
       }
     ) => Promise<{ ok: true } | { ok: false; error: string }>
@@ -1699,8 +1716,11 @@ export type PreloadApi = {
   starNag: {
     onShow: (callback: (payload?: { mode?: 'gh' | 'web' }) => void) => () => void
     dismiss: () => Promise<void>
+    later: () => Promise<void>
     complete: () => Promise<void>
     disable: () => Promise<void>
+    openWeb: () => Promise<void>
+    starOrca: () => Promise<boolean>
     forceShow: () => Promise<void>
   }
   /** Fire-and-forget track. Loose typing at the IPC boundary on purpose —
@@ -1711,15 +1731,13 @@ export type PreloadApi = {
   /** Flip the persisted opt-in preference. Subject to a per-session
    *  consent-mutation rate limit on the main side (≤5/session). */
   telemetrySetOptIn: (optedIn: boolean) => Promise<void>
-  /** Diagnostic-bundle / trace-folder controls. Surface for
-   *  telemetry-error-tracking.md §User controls. The renderer triggers
-   *  flows; main does the filesystem / network work and returns
-   *  serializable metadata. Main retains collected upload payloads so the
-   *  renderer can confirm without reading or substituting arbitrary bytes. */
+  /** Diagnostic file controls. Surface for telemetry-error-tracking.md
+   *  §User controls. The renderer triggers flows; main does the filesystem /
+   *  network work and returns serializable metadata. Main retains collected
+   *  upload payloads so the renderer can confirm without reading or
+   *  substituting arbitrary bytes. */
   diagnostics: {
     getStatus: () => Promise<DiagnosticsStatusPayload>
-    openTraceFolder: () => Promise<void>
-    clearTraces: () => Promise<void>
     collectBundle: (lookbackMinutes?: number) => Promise<DiagnosticsBundlePayload>
     openBundlePreview: (bundleSubmissionId: string) => Promise<void>
     discardBundlePreview: (bundleSubmissionId: string) => Promise<void>
@@ -2113,6 +2131,11 @@ export type PreloadApi = {
       connectionId?: string
       pushTarget?: GitPushTarget
     }) => Promise<void>
+    syncFork: (args: {
+      worktreePath: string
+      connectionId?: string
+      expectedUpstream: GitForkSyncExpectedUpstream
+    }) => Promise<GitForkSyncResult>
     push: (args: {
       worktreePath: string
       publish?: boolean
@@ -2195,6 +2218,8 @@ export type PreloadApi = {
       title: string
       body: string
       draft: boolean
+      provider?: HostedReviewProvider
+      useTemplate?: boolean
       connectionId?: string
       sourceControlAiResolvedParams?: ResolvedSourceControlAiGenerationParams
       sourceControlAi?: SourceControlAiSettings
@@ -2248,11 +2273,17 @@ export type PreloadApi = {
       line: number
       connectionId?: string
     }) => Promise<string | null>
+    remoteCommitUrl: (args: {
+      worktreePath: string
+      sha: string
+      connectionId?: string
+    }) => Promise<string | null>
   }
   ui: {
     get: () => Promise<PersistedUIState>
     set: (args: Partial<PersistedUIState>) => Promise<void>
     recordFeatureInteraction: (id: FeatureInteractionId) => Promise<PersistedUIState>
+    onStateChanged: (callback: (ui: PersistedUIState) => void) => () => void
     onOpenSettings: (callback: () => void) => () => void
     onOpenSetupGuide: (callback: () => void) => () => void
     onOpenFeatureTour: (callback: () => void) => () => void
@@ -2280,6 +2311,7 @@ export type PreloadApi = {
         url: string
         worktreeId?: string
         sessionProfileId?: string
+        activate?: boolean
       }) => void
     ) => () => void
     replyTabCreate: (reply: { requestId: string; browserPageId?: string; error?: string }) => void
@@ -2295,6 +2327,7 @@ export type PreloadApi = {
     onFocusBrowserAddressBar: (callback: () => void) => () => void
     onFindInBrowserPage: (callback: () => void) => () => void
     onReloadBrowserPage: (callback: () => void) => () => void
+    onBrowserHistoryNavigate: (callback: (direction: 'back' | 'forward') => void) => () => void
     onZoomBrowserPage: (callback: (direction: 'in' | 'out' | 'reset') => void) => () => void
     onHardReloadBrowserPage: (callback: () => void) => () => void
     onCloseActiveTab: (callback: () => void) => () => void
@@ -2306,7 +2339,6 @@ export type PreloadApi = {
     onCtrlTabKeyUp: (callback: () => void) => () => void
     onToggleStatusBar: (callback: () => void) => () => void
     onDictationKeyDown: (callback: () => void) => () => void
-    onExportPdfRequested: (callback: () => void) => () => void
     onActivateWorktree: (
       callback: (data: {
         repoId: string

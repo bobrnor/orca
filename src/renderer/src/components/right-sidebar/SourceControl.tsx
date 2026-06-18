@@ -4184,12 +4184,9 @@ function SourceControlInner(): React.JSX.Element {
     if (shouldResetToLoading) {
       beginGitBranchCompareRequest(activeWorktreeId, requestKey, effectiveBaseRef)
     } else {
-      useAppStore.setState((s) => ({
-        gitBranchCompareRequestKeyByWorktree: {
-          ...s.gitBranchCompareRequestKeyByWorktree,
-          [activeWorktreeId]: requestKey
-        }
-      }))
+      beginGitBranchCompareRequest(activeWorktreeId, requestKey, effectiveBaseRef, {
+        preserveExistingSummary: true
+      })
     }
 
     try {

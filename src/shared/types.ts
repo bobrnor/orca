@@ -34,6 +34,10 @@ import type { ClaudeAgentTeamsMode } from './claude-agent-teams-tmux-compat'
 import type { TerminalCustomTheme } from './terminal-custom-themes'
 import type { UiLanguage } from './ui-language'
 import type { ForkSyncMode } from './git-fork-sync'
+import type {
+  GlobalWindowsRuntimeDefault,
+  LocalWindowsRuntimePreference
+} from './project-execution-runtime'
 
 // Re-exported for backward compat with renderer call sites that import
 // `WorkspaceCreateTelemetrySource` from '../../../shared/types'.
@@ -104,9 +108,16 @@ export type Project = {
   repoIcon?: RepoIcon | null
   kind?: RepoKind
   providerIdentity?: ProjectProviderIdentity
+  /** Local Windows projects inherit the global runtime default unless this override is set. */
+  localWindowsRuntimePreference?: LocalWindowsRuntimePreference
   sourceRepoIds: string[]
   createdAt: number
   updatedAt: number
+}
+
+export type ProjectUpdateArgs = {
+  projectId: string
+  updates: Partial<Pick<Project, 'localWindowsRuntimePreference'>>
 }
 
 export type ProjectHostSetupState = 'ready' | 'not-set-up' | 'setting-up' | 'error' | 'unsupported'
@@ -1111,6 +1122,7 @@ export type GitHubPRRefreshCandidate = GitHubPRRefreshAlias & {
   cachedChecksStatus?: CheckStatus | null
   cachedMergeable?: PRMergeableState | null
   cachedMergeStateStatus?: string | null
+  localGitOptions?: { wslDistro?: string }
 }
 
 export type GitHubPRRefreshSkippedReason =
@@ -2402,6 +2414,8 @@ export type GlobalSettings = {
    *  changing the default terminal shell. */
   localAgentRuntime?: 'host' | 'wsl'
   localAgentWslDistro?: string | null
+  /** Why: global is only the default policy; project-level runtime preference wins. */
+  localWindowsRuntimeDefault: GlobalWindowsRuntimeDefault
   /** Why: "PowerShell" is the product-facing shell family. Auto resolves to
    *  PowerShell 7+ when present and falls back to inbox Windows PowerShell. */
   terminalWindowsPowerShellImplementation: 'auto' | 'powershell.exe' | 'pwsh.exe'
@@ -2591,6 +2605,10 @@ export type GlobalSettings = {
   /** Why: generated tab titles are semantic but subjective, so they stay opt-in
    *  and manual renames remain the stronger user intent. */
   tabAutoGenerateTitle: boolean
+  /** Why: pinned tabs can still be closed via the keyboard/native-menu close
+   *  path, so this gates that close behind a confirmation prompt to prevent
+   *  accidental loss. Defaults on. */
+  confirmClosePinnedTab: boolean
   /** When true, Orca requests local awake assertions while hook-reported agents are working. */
   keepComputerAwakeWhileAgentsRun: boolean
   /** Why: macOS terminals must choose between letting Option compose layout
@@ -3003,6 +3021,7 @@ export type PersistedUIState = {
   workspaceStatuses?: WorkspaceStatusDefinition[]
   workspaceBoardOpacity?: number
   workspaceBoardColumnWidth?: number
+  syncTaskStatusFromWorkspaceBoard?: boolean
   /** One-shot migration flag for a short-lived build that persisted the
    *  default workspace statuses in reverse workflow order. Once stamped,
    *  user-authored status ordering is never inferred from IDs/labels again. */

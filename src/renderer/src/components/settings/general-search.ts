@@ -3,6 +3,7 @@ import { getGeneralEditorSearchEntries } from './general-editor-search'
 import { translate } from '@/i18n/i18n'
 import { searchKeywords, translateSearchKeyword } from './settings-search-keywords'
 import { createLocalizedCatalog } from '@/i18n/localized-catalog'
+import { getGeneralProjectRuntimeSearchEntries } from './general-project-runtime-search'
 import { getGeneralSupportSearchEntries } from './general-support-search'
 
 export { getGeneralEditorSearchEntries } from './general-editor-search'
@@ -149,6 +150,23 @@ export const getGeneralNavigationSearchEntries = createLocalizedCatalog(() => [
       ...translateSearchKeyword('auto.components.settings.general.search.f8f0ac213a', 'sequential'),
       ...translateSearchKeyword('auto.components.settings.general.search.fb84767421', 'switch')
     ]
+  },
+  {
+    title: translate(
+      'auto.components.settings.general.search.161a86a9da',
+      'Confirm before closing pinned tabs'
+    ),
+    description: translate(
+      'auto.components.settings.general.search.8e593f04fc',
+      'Show a confirmation dialog before a pinned tab is closed.'
+    ),
+    keywords: [
+      ...translateSearchKeyword('auto.components.settings.general.search.867dddea41', 'pinned'),
+      ...translateSearchKeyword('auto.components.settings.general.search.5250cf0e48', 'pin'),
+      ...translateSearchKeyword('auto.components.settings.general.search.2a254b725e', 'tab'),
+      ...translateSearchKeyword('auto.components.settings.general.search.9f8558233a', 'confirm'),
+      ...translateSearchKeyword('auto.components.settings.general.search.afa37a34e1', 'close')
+    ]
   }
 ])
 
@@ -252,18 +270,28 @@ export const getGeneralAgentSearchEntries = createLocalizedCatalog(() => [
       ...translateSearchKeyword('auto.components.settings.general.search.3c30fe2d51', 'gemini'),
       ...translateSearchKeyword('auto.components.settings.general.search.f472e97440', 'aider'),
       ...translateSearchKeyword('auto.components.settings.general.search.5d9ba08673', 'copilot'),
-      ...translateSearchKeyword('auto.components.settings.general.search.c61b14be7c', 'grok')
+      ...translateSearchKeyword('auto.components.settings.general.search.c61b14be7c', 'grok'),
+      ...translateSearchKeyword('auto.lib.agent.catalog.fc80296033', 'devin')
     ]
   }
 ])
 
-export const getGeneralPaneSearchEntries = createLocalizedCatalog((): SettingsSearchEntry[] => [
-  ...getGeneralWorkspaceSearchEntries(),
-  ...getGeneralNetworkSearchEntries(),
-  ...getGeneralNavigationSearchEntries(),
-  ...getGeneralEditorSearchEntries(),
-  ...getGeneralCliSearchEntries(),
-  ...getGeneralCacheTimerSearchEntries(),
-  ...getGeneralUpdateSearchEntries(),
-  ...getGeneralSupportSearchEntries()
-])
+type GeneralPaneSearchOptions = {
+  includeProjectRuntime?: boolean
+}
+
+export function getGeneralPaneSearchEntries(
+  options: GeneralPaneSearchOptions = {}
+): SettingsSearchEntry[] {
+  return [
+    ...getGeneralWorkspaceSearchEntries(),
+    ...getGeneralNetworkSearchEntries(),
+    ...getGeneralNavigationSearchEntries(),
+    ...(options.includeProjectRuntime === false ? [] : getGeneralProjectRuntimeSearchEntries()),
+    ...getGeneralEditorSearchEntries(),
+    ...getGeneralCliSearchEntries(),
+    ...getGeneralCacheTimerSearchEntries(),
+    ...getGeneralUpdateSearchEntries(),
+    ...getGeneralSupportSearchEntries()
+  ]
+}

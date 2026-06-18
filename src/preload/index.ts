@@ -9,6 +9,7 @@ import type { AppIdentity } from '../shared/app-identity'
 import type { CliInstallStatus } from '../shared/cli-install-types'
 import type { AgentHookInstallStatus } from '../shared/agent-hook-types'
 import type { TerminalPaneSplitSource } from '../shared/feature-education-telemetry'
+import type { ProjectExecutionRuntimeResolution } from '../shared/project-execution-runtime'
 import type {
   BaseRefSearchResult,
   BaseRefDefaultResult,
@@ -128,7 +129,7 @@ import type {
   SpeechTranscriptEvent
 } from '../shared/speech-types'
 import type { TelemetryConsentState } from '../shared/telemetry-consent-types'
-import type { RefreshAgentsResult } from './api-types'
+import type { PreflightRuntimeContext, RefreshAgentsResult } from './api-types'
 import type { AgentKind, LaunchSource, RequestKind } from '../shared/telemetry-events'
 import type { AppStarSource } from '../shared/gh-star-source'
 import type {
@@ -529,6 +530,7 @@ const api = {
 
   projects: {
     list: () => ipcRenderer.invoke('projects:list'),
+    update: (args) => ipcRenderer.invoke('projects:update', args),
     listHostSetups: () => ipcRenderer.invoke('projectHostSetups:list'),
     createHostSetup: (args) => ipcRenderer.invoke('projectHostSetups:create', args),
     setupExistingFolder: (args) =>
@@ -696,6 +698,7 @@ const api = {
       worktreeId?: string
       sessionId?: string
       shellOverride?: string
+      projectRuntime?: ProjectExecutionRuntimeResolution
       // Why: closes the SIGKILL race documented in INVESTIGATION.md by
       // letting main patch + sync-flush the (worktreeId, tabId, leafId →
       // ptyId) binding before pty:spawn returns. Only the renderer's
@@ -1677,6 +1680,8 @@ const api = {
     commandCodeStatus: (): Promise<AgentHookInstallStatus> =>
       ipcRenderer.invoke('agentHooks:commandCodeStatus'),
     grokStatus: (): Promise<AgentHookInstallStatus> => ipcRenderer.invoke('agentHooks:grokStatus'),
+    devinStatus: (): Promise<AgentHookInstallStatus> =>
+      ipcRenderer.invoke('agentHooks:devinStatus'),
     copilotStatus: (): Promise<AgentHookInstallStatus> =>
       ipcRenderer.invoke('agentHooks:copilotStatus'),
     hermesStatus: (): Promise<AgentHookInstallStatus> =>
@@ -1715,12 +1720,10 @@ const api = {
       }
       linear: { connected: boolean }
     }> => ipcRenderer.invoke('preflight:check', args),
-    detectAgents: (args?: { wslDistro?: string | null; wslDefault?: boolean }): Promise<string[]> =>
+    detectAgents: (args?: PreflightRuntimeContext): Promise<string[]> =>
       ipcRenderer.invoke('preflight:detectAgents', args),
-    refreshAgents: (args?: {
-      wslDistro?: string | null
-      wslDefault?: boolean
-    }): Promise<RefreshAgentsResult> => ipcRenderer.invoke('preflight:refreshAgents', args),
+    refreshAgents: (args?: PreflightRuntimeContext): Promise<RefreshAgentsResult> =>
+      ipcRenderer.invoke('preflight:refreshAgents', args),
     detectRemoteAgents: (args: { connectionId: string }): Promise<string[]> =>
       ipcRenderer.invoke('preflight:detectRemoteAgents', args)
   },
@@ -2742,6 +2745,11 @@ const api = {
       const listener = (_event: Electron.IpcRendererEvent) => callback()
       ipcRenderer.on('ui:deleteCurrentWorkspace', listener)
       return () => ipcRenderer.removeListener('ui:deleteCurrentWorkspace', listener)
+    },
+    onOpenWorkspaceBoard: (callback: () => void): (() => void) => {
+      const listener = (_event: Electron.IpcRendererEvent) => callback()
+      ipcRenderer.on('ui:openWorkspaceBoard', listener)
+      return () => ipcRenderer.removeListener('ui:openWorkspaceBoard', listener)
     },
     onOpenTasks: (callback: () => void): (() => void) => {
       const listener = (_event: Electron.IpcRendererEvent) => callback()
